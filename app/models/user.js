@@ -10,17 +10,20 @@ var User = db.Model.extend({
   hasTimestamps: true,
 
   initialize: function() {
-    this.on('creating', function(model, attrs, options) {
-      var password = model.get('password');
-      bcrypt.hash(password, null, null, function(err, hash) {
+    this.on('creating', this.hashPassword, this);
+  },
+
+  hashPassword: function(model, attrs, options) {
+    return new Promise(function(resolve, reject) {
+      bcrypt.hash(model.attributes.password, null, null, function(err, hash) {
         if (err) {
-          console.log('Bcrypt Error: ', err);
+          reject(err);
         }
-        console.log('Hash: ', hash);
         model.set('password', hash);
+        resolve(hash); // data is created only after this occurs
       });
     });
-  }
+  },
 });
 
 module.exports = User;

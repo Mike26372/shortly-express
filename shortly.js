@@ -34,21 +34,7 @@ var sess = {
 };
 app.use(session(sess));
 
-// app.use(function(req, res, next) {
-//   if (req.session && req.session.user) {
-//     new User({ username: req.session.user.username }).fetch().then(function(found) {
-//       if (user) {
-//         req.user = user;
-//         delete req.user.password; // delete the password from the session
-//         req.session.user = user;  //refresh the session value
-//         res.locals.user = user;
-//       }
-//       // finishing processing the middleware and run the route
-//       next();
-//     }).catch(function(err) {
-//       next();
-//     });
-// });
+// ADD MIDDLEWARE HERE***
 
 app.use(express.static(__dirname + '/public'));
 
@@ -105,83 +91,58 @@ function(req, res) {
 
 app.get('/signup', function(req, res) {
   res.render('signup');
-  // Links.reset().fetch().then(function(links) {
-  //   res.status(200).send(links.models);
-  // });
+
 });
 
 app.post('/signup', function(req, res) {
   var username = req.body.username;
   var password = req.body.password;
   
-  var user = new User({username: username, password: password});
-
-  user.save().then(function(user) {
-    console.log('User created: ');
-    console.log(user);
+  var user = new User({username: username, password: password})
+  .save()
+  .then(function(user) {
     Users.add(user);
+    req.session.user = username;
+    // res.writeHead(201);
+    res.redirect('/');
   }).catch(function(err) {
     console.error('User creation error: ', err);
+    // res.writeHead(404);
+    res.redirect('/login');
   });
-
-  // var user = req.session.user;
-
-  // if (!user) {
-  //   user = req.session.user = {};
-  // }
-
 });
 
 app.get('/login', function(req, res) {
   res.render('login');
-  // Links.reset().fetch().then(function(links) {
-  //   res.status(200).send(links.models);
-  // });
+
 });
 
 app.post('/login', function(req, res) {
+  var username = req.body.username;
   var password = req.body.password;
-  db.knex.select('password').from('users').where('username', '=', req.body.username)
+  db.knex.select('password')
+    .from('users')
+    .where('username', '=', req.body.username)
     .then(function(hash) {
-      console.log(hash[0].password);
-      return util.checkPassword(password, hash[0].password);
-    }).then(function(exists) {
-      req.session.user = user;
+      if (!hash[0]) {
+        return false;
+      } else {
+        return util.checkPassword(password, hash[0].password);
+      }
+    })
+    .then(function(exists) {
       console.log('Exists: ', exists);
-      res.redirect('/');
-    }).catch(function(err) {
+      if (exists) {
+        req.session.user = username;
+        res.redirect('/');
+      } else {
+        res.redirect('/login');
+      }
+    })
+    .catch(function(err) {
       console.error(err);
-      res.end();
+      res.redirect('/login');
     });
-
-  
-
-  // if (!util.isValidUrl(uri)) {
-  //   console.log('Not a valid url: ', uri);
-  //   return res.sendStatus(404);
-  // }
-  // console.log('POST /USER');
-  // new User({ username: req.body.username, password: req.body.password }).fetch().then(function(found) {
-  //   if (found) {
-  //     res.status(200).send(found.attributes);
-  //   } else {
-  //     SOME_UTILITY_FUNCTION(uri, function(err, title) {
-  //       if (err) {
-  //         console.log('Error reading URL heading: ', err);
-  //         return res.sendStatus(404);
-  //       }
-
-  //       Users.create({
-  //         url: uri,
-  //         title: title,
-  //         baseUrl: req.headers.origin
-  //       })
-  //       .then(function(newLink) {
-  //         res.status(200).send(newLink);
-  //       });
-  //     });
-  //   }
-  // });
 });
 
 app.get('/users', util.isAuthenticated, function(req, res) {
@@ -191,13 +152,11 @@ app.get('/users', util.isAuthenticated, function(req, res) {
 });
 
 
-
-
 // Logout endpoint
 app.get('/logout', function (req, res) {
   console.log('Inside /logout');
   req.session.destroy();
-  res.send('logout success!');
+  res.redirect('/login');
 });
 /************************************************************/
 // Handle the wildcard route last - if all other routes fail
