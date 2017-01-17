@@ -1,3 +1,4 @@
+
 var db = require('../config');
 var Click = require('./click');
 var crypto = require('crypto');
