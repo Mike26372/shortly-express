@@ -13,8 +13,11 @@ var Click = require('./app/models/click');
 
 var app = express();
 var session = require('express-session');
-var knexSessionStore = require('./node_modules/connect-session-knex/index.js')(session);
-var store = new knexSessionStore();
+var knexSessionStore = require('connect-session-knex')(session);
+var store = new knexSessionStore({
+  knex: db.knex,
+  tablename: 'sessions' // optional. Defaults to 'sessions'
+});
 
 app.set('views', __dirname + '/views');
 app.set('view engine', 'ejs');
