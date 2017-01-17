@@ -27,7 +27,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 var sess = {
   secret: 'nyancat',
   cookie: {
-    maxAge: 60000
+    maxAge: 300000
   }, 
   resave: false,
   saveUninitialized: true
@@ -46,14 +46,15 @@ app.get('/create', util.isAuthenticated, function(req, res) {
   res.render('index');
 });
 
+// Find way to filter links by user_id foreign key
 app.get('/links', util.isAuthenticated, function(req, res) {
   Links.reset().fetch().then(function(links) {
     res.status(200).send(links.models);
   });
 });
 
-app.post('/links', 
-function(req, res) {
+// add current user as foreign key of user_id to links table
+app.post('/links', function(req, res) {
   var uri = req.body.url;
   console.log('Inside /links');
 
@@ -62,7 +63,24 @@ function(req, res) {
     return res.sendStatus(404);
   }
 
-  new Link({ url: uri }).fetch().then(function(found) {
+  var currentUser = req.session.user;
+  console.log('Current User: ', currentUser);
+  var currentUserId;  
+  
+  db.knex
+    .select('id')
+    .from('users')
+    .where({username: currentUser})
+    .then(function(data) {
+      currentUserId = data[0].id;
+      console.log('Current User ID: ', currentUserId);
+      return data;
+    }).catch(function(err) {
+      console.error(err);
+      return err;
+    });
+
+  new Link({ url: uri, 'user_id': null }).fetch().then(function(found) {
     if (found) {
       res.status(200).send(found.attributes);
     } else {
@@ -150,7 +168,6 @@ app.get('/users', util.isAuthenticated, function(req, res) {
     res.status(200).send(users.models);
   });
 });
-
 
 // Logout endpoint
 app.get('/logout', function (req, res) {
