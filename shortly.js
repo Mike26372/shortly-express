@@ -3,9 +3,6 @@ var util = require('./lib/utility');
 var partials = require('express-partials');
 var bodyParser = require('body-parser');
 var cors = require('cors');
-var session = require('express-session');
-
-
 
 var db = require('./app/config');
 var Users = require('./app/collections/users');
@@ -15,6 +12,9 @@ var Link = require('./app/models/link');
 var Click = require('./app/models/click');
 
 var app = express();
+var session = require('express-session');
+var knexSessionStore = require('./node_modules/connect-session-knex/index.js')(session);
+var store = new knexSessionStore();
 
 app.set('views', __dirname + '/views');
 app.set('view engine', 'ejs');
@@ -30,7 +30,8 @@ var sess = {
     maxAge: 300000
   }, 
   resave: false,
-  saveUninitialized: true
+  saveUninitialized: true,
+  store: store
 };
 app.use(session(sess));
 
@@ -49,83 +50,54 @@ app.get('/create', util.isAuthenticated, function(req, res) {
 // Find way to filter links by user_id foreign key
 app.get('/links', util.isAuthenticated, function(req, res) {
   
-  var currentUser = req.session.user;
-  var currentUserId;
-  var linkIds;  
-  db.knex
-    .select('id')
-    .from('users')
-    .where({username: currentUser})
-    .then(function(data) {
-      currentUserId = data[0].id;
+  var currentUserId = req.session.user;
 
-      console.log('GET LINKS CURRUSERID:', currentUser);
-      console.log('GET LINKS CURRUSER:', currentUserId);
-      // MUST PASS TESTS ****
-      if (!currentUserId) {
-        Links.reset().fetch().then(function(links) {
-          res.status(200).send(links.models);
-        });
-      } else {
-        Links.reset().query('where', 'user_id', '=', currentUserId).fetch().then(function(links) {
-          console.log('LINKS ', links);
-          res.status(200).send(links.models);
-        });
-      }
-        
+  if (!currentUserId) {
+    Links.reset().fetch().then(function(links) {
+      res.status(200).send(links.models);
     });
-
-
+  } else {
+    Links.reset()
+    .query('where', 'user_id', '=', currentUserId)
+    .fetch()
+    .then(function(links) {
+      res.status(200).send(links.models);
+    });
+  }
 });
 
 // add current user as foreign key of user_id to links table
 app.post('/links', function(req, res) {
   var uri = req.body.url;
-  console.log('Inside /links');
 
   if (!util.isValidUrl(uri)) {
-    console.log('Not a valid url: ', uri);
     return res.sendStatus(404);
   }
 
-  var currentUser = req.session.user;
-  console.log('Current User: ', currentUser);
-  var currentUserId;  
+  var currentUserId = req.session.user;
   
-  db.knex
-    .select('id')
-    .from('users')
-    .where({username: currentUser})
-    .then(function(data) {
-      currentUserId = data[0].id;
-      console.log('Current User ID: ', currentUserId);
-      new Link({ url: uri, 'user_id': currentUserId }).fetch().then(function(found) {
-        if (found) {
-          res.status(200).send(found.attributes);
-        } else {
-          util.getUrlTitle(uri, function(err, title) {
-            if (err) {
-              console.log('Error reading URL heading: ', err);
-              return res.sendStatus(404);
-            }
-
-            Links.create({
-              url: uri,
-              title: title,
-              baseUrl: req.headers.origin,
-              'user_id': currentUserId
-            })
-            .then(function(newLink) {
-              res.status(200).send(newLink);
-            });
-          });
+  new Link({ url: uri, 'user_id': currentUserId }).fetch().then(function(found) {
+    if (found) {
+      res.status(200).send(found.attributes);
+    } else {
+      util.getUrlTitle(uri, function(err, title) {
+        if (err) {
+          console.log('Error reading URL heading: ', err);
+          return res.sendStatus(404);
         }
-      });
-    }).catch(function(err) {
-      console.error(err);
-      return err;
-    });
 
+        Links.create({
+          url: uri,
+          title: title,
+          baseUrl: req.headers.origin,
+          'user_id': currentUserId
+        })
+        .then(function(newLink) {
+          res.status(200).send(newLink);
+        });
+      });
+    }
+  });
 });
 
 /************************************************************/
@@ -145,7 +117,7 @@ app.post('/signup', function(req, res) {
   .save()
   .then(function(user) {
     Users.add(user);
-    req.session.user = username;
+    req.session.user = user.id;
     // res.writeHead(201);
     res.redirect('/');
   }).catch(function(err) {
@@ -163,29 +135,28 @@ app.get('/login', function(req, res) {
 app.post('/login', function(req, res) {
   var username = req.body.username;
   var password = req.body.password;
-  db.knex.select('password')
-    .from('users')
-    .where('username', '=', req.body.username)
-    .then(function(hash) {
-      if (!hash[0]) {
-        return false;
+  if (username && password) {
+    new User({username: username}).fetch()
+    .then(function(user) {
+      if (user) {
+        return user.authenticate(password, user.attributes.password)
+        .then(function(success) {
+          return user;
+        });
       } else {
-        return util.checkPassword(password, hash[0].password);
+        throw new Error('User not found');
       }
     })
-    .then(function(exists) {
-      console.log('Exists: ', exists);
-      if (exists) {
-        req.session.user = username;
-        res.redirect('/');
-      } else {
-        res.redirect('/login');
-      }
+    .then(function(user) {
+      console.log(user);
+      req.session.user = user.attributes.id;
+      res.redirect('/');
     })
     .catch(function(err) {
       console.error(err);
       res.redirect('/login');
     });
+  }
 });
 
 app.get('/users', util.isAuthenticated, function(req, res) {
@@ -196,7 +167,6 @@ app.get('/users', util.isAuthenticated, function(req, res) {
 
 // Logout endpoint
 app.get('/logout', function (req, res) {
-  console.log('Inside /logout');
   req.session.destroy();
   res.redirect('/login');
 });

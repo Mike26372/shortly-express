@@ -24,6 +24,18 @@ var User = db.Model.extend({
       });
     });
   },
+
+  authenticate: function(password, hash) {    
+    return new Promise(function(resolve, reject) {
+      bcrypt.compare(password, hash, function(err, res) {
+        if (err) {
+          console.error('Bcrypt error', err);
+          return reject(err);
+        }
+        return resolve(res);
+      });
+    });
+  }
 });
 
 module.exports = User;

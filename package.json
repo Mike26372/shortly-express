@@ -21,6 +21,7 @@
     "bluebird": "^3.3.4",
     "body-parser": "^1.15.0",
     "bookshelf": "^0.9.1",
+    "connect-session-knex": "^1.3.0",
     "cors": "^2.8.1",
     "ejs": "^2.4.1",
     "express": "^4.13.4",
