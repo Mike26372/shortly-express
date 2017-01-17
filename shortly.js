@@ -48,9 +48,34 @@ app.get('/create', util.isAuthenticated, function(req, res) {
 
 // Find way to filter links by user_id foreign key
 app.get('/links', util.isAuthenticated, function(req, res) {
-  Links.reset().fetch().then(function(links) {
-    res.status(200).send(links.models);
-  });
+  
+  var currentUser = req.session.user;
+  var currentUserId;
+  var linkIds;  
+  db.knex
+    .select('id')
+    .from('users')
+    .where({username: currentUser})
+    .then(function(data) {
+      currentUserId = data[0].id;
+
+      console.log('GET LINKS CURRUSERID:', currentUser);
+      console.log('GET LINKS CURRUSER:', currentUserId);
+      // MUST PASS TESTS ****
+      if (!currentUserId) {
+        Links.reset().fetch().then(function(links) {
+          res.status(200).send(links.models);
+        });
+      } else {
+        Links.reset().query('where', 'user_id', '=', currentUserId).fetch().then(function(links) {
+          console.log('LINKS ', links);
+          res.status(200).send(links.models);
+        });
+      }
+        
+    });
+
+
 });
 
 // add current user as foreign key of user_id to links table
@@ -74,33 +99,33 @@ app.post('/links', function(req, res) {
     .then(function(data) {
       currentUserId = data[0].id;
       console.log('Current User ID: ', currentUserId);
-      return data;
+      new Link({ url: uri, 'user_id': currentUserId }).fetch().then(function(found) {
+        if (found) {
+          res.status(200).send(found.attributes);
+        } else {
+          util.getUrlTitle(uri, function(err, title) {
+            if (err) {
+              console.log('Error reading URL heading: ', err);
+              return res.sendStatus(404);
+            }
+
+            Links.create({
+              url: uri,
+              title: title,
+              baseUrl: req.headers.origin,
+              'user_id': currentUserId
+            })
+            .then(function(newLink) {
+              res.status(200).send(newLink);
+            });
+          });
+        }
+      });
     }).catch(function(err) {
       console.error(err);
       return err;
     });
 
-  new Link({ url: uri, 'user_id': null }).fetch().then(function(found) {
-    if (found) {
-      res.status(200).send(found.attributes);
-    } else {
-      util.getUrlTitle(uri, function(err, title) {
-        if (err) {
-          console.log('Error reading URL heading: ', err);
-          return res.sendStatus(404);
-        }
-
-        Links.create({
-          url: uri,
-          title: title,
-          baseUrl: req.headers.origin
-        })
-        .then(function(newLink) {
-          res.status(200).send(newLink);
-        });
-      });
-    }
-  });
 });
 
 /************************************************************/
